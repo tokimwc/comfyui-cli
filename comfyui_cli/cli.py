@@ -19,7 +19,7 @@ console = Console()
 app.add_typer(system.app, name="status", help="Server status and system info")
 app.add_typer(models.app, name="models", help="List and manage models")
 app.add_typer(queue.app, name="queue", help="Queue and execution management")
-app.add_typer(run.app, name="run", help="Execute workflows")
+app.command(name="run")(run.run_workflow)
 
 
 @app.command()

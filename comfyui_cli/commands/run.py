@@ -16,13 +16,10 @@ from ..config import Config
 from ..workflow_converter import gui_to_api, enhance_with_object_info, load_workflow
 from ..ws_client import run_monitor
 
-app = typer.Typer(help="Run workflows.")
 console = Console()
 
 
-@app.callback(invoke_without_command=True)
-def run(
-    ctx: typer.Context,
+def run_workflow(
     workflow_path: str = typer.Argument(..., help="Path to workflow JSON file"),
     seed: int = typer.Option(None, "--seed", "-s", help="Override seed value"),
     prompt_text: str = typer.Option(None, "--prompt", "-P", help="Override positive prompt text"),
@@ -36,9 +33,6 @@ def run(
     Accepts both GUI-format and API-format workflow JSON files.
     GUI-format files (with nodes/links) are automatically converted to API format.
     """
-    if ctx.invoked_subcommand is not None:
-        return
-
     path = Path(workflow_path)
     if not path.exists():
         console.print(f"[red]File not found: {workflow_path}[/red]")
