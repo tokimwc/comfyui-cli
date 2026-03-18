@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "comfyui-cli"
+version = "0.1.0"
+description = "CLI tool for ComfyUI - manage workflows, models, and generation from your terminal"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "tokitoki", email = "73969890+tokimwc@users.noreply.github.com" },
+]
+dependencies = [
+    "typer>=0.9.0",
+    "httpx>=0.25.0",
+    "websockets>=12.0",
+    "rich>=13.0",
+]
+
+[project.scripts]
+comfyui = "comfyui_cli.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["comfyui_cli"]
