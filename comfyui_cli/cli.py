@@ -6,7 +6,7 @@ import typer
 from rich.console import Console
 
 from . import __version__
-from .commands import models, queue, run, system
+from .commands import models, output, queue, run, system
 
 app = typer.Typer(
     name="comfyui",
@@ -19,7 +19,9 @@ console = Console()
 app.add_typer(system.app, name="status", help="Server status and system info")
 app.add_typer(models.app, name="models", help="List and manage models")
 app.add_typer(queue.app, name="queue", help="Queue and execution management")
+app.add_typer(output.app, name="output", help="Output files and image management")
 app.command(name="run")(run.run_workflow)
+app.command(name="upload")(output.upload)
 
 
 @app.command()
