@@ -12,11 +12,21 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 
 from ..client import ComfyUIClient
-from ..config import Config
+from ..config import Config, CONFIG_DIR
 from ..workflow_converter import gui_to_api, enhance_with_object_info, load_workflow
 from ..ws_client import run_monitor
 
 console = Console()
+
+TEMPLATE_DIR = CONFIG_DIR / "templates"
+
+
+def _load_template(name: str) -> dict[str, Any] | None:
+    """Load a template by name, return None if not found."""
+    path = TEMPLATE_DIR / f"{name}.json"
+    if path.exists():
+        return json.loads(path.read_text(encoding="utf-8"))
+    return None
 
 
 def run_workflow(
@@ -24,6 +34,7 @@ def run_workflow(
     seed: int = typer.Option(None, "--seed", "-s", help="Override seed value"),
     prompt_text: str = typer.Option(None, "--prompt", "-P", help="Override positive prompt text"),
     negative: str = typer.Option(None, "--negative", "-N", help="Override negative prompt text"),
+    template_name: str = typer.Option(None, "--template", "-T", help="Apply a saved prompt template"),
     batch: int = typer.Option(1, "--batch", "-b", help="Number of times to run"),
     watch: bool = typer.Option(True, "--watch/--no-watch", "-w", help="Watch progress via WebSocket"),
     dry_run: bool = typer.Option(False, "--dry-run", help="Convert and show API prompt without executing"),
@@ -32,6 +43,7 @@ def run_workflow(
 
     Accepts both GUI-format and API-format workflow JSON files.
     GUI-format files (with nodes/links) are automatically converted to API format.
+    Use --template to apply a saved prompt template (overrides prompt/negative/seed/etc).
     """
     path = Path(workflow_path)
     if not path.exists():
@@ -65,7 +77,16 @@ def run_workflow(
             # Already API format
             api_prompt = workflow
 
-        # Apply overrides
+        # Apply template first (CLI flags override template values)
+        if template_name:
+            tmpl = _load_template(template_name)
+            if tmpl is None:
+                console.print(f"[red]Template not found: {template_name}[/red]")
+                raise typer.Exit(1)
+            console.print(f"[dim]Applying template: {template_name}[/dim]")
+            _apply_template(api_prompt, tmpl)
+
+        # Apply explicit overrides (take priority over template)
         if seed is not None:
             _override_seed(api_prompt, seed)
         if prompt_text is not None:
@@ -189,3 +210,51 @@ def _override_prompt(prompt: dict[str, Any], text: str, positive: bool = True) -
             inputs["text"] = text
         elif not positive and is_negative:
             inputs["text"] = text
+
+
+def _apply_template(prompt: dict[str, Any], tmpl: dict[str, Any]) -> None:
+    """Apply a template's parameters to an API prompt."""
+    if "positive" in tmpl:
+        _override_prompt(prompt, tmpl["positive"], positive=True)
+        # Also handle DF_Text_Box positive
+        for nd in prompt.values():
+            if nd.get("class_type") == "DF_Text_Box":
+                inp = nd.get("inputs", {})
+                if "Text" in inp:
+                    current = str(inp["Text"])
+                    is_neg = any(kw in current.lower() for kw in ["worst quality", "low quality", "bad", "ugly"])
+                    if not is_neg:
+                        inp["Text"] = tmpl["positive"]
+
+    if "negative" in tmpl:
+        _override_prompt(prompt, tmpl["negative"], positive=False)
+        for nd in prompt.values():
+            if nd.get("class_type") == "DF_Text_Box":
+                inp = nd.get("inputs", {})
+                if "Text" in inp:
+                    current = str(inp["Text"])
+                    is_neg = any(kw in current.lower() for kw in ["worst quality", "low quality", "bad", "ugly"])
+                    if is_neg:
+                        inp["Text"] = tmpl["negative"]
+
+    if "seed" in tmpl:
+        _override_seed(prompt, tmpl["seed"])
+
+    # Apply sampler parameters
+    for nd in prompt.values():
+        if "KSampler" not in nd.get("class_type", ""):
+            continue
+        inp = nd.get("inputs", {})
+        for key in ("steps", "cfg", "sampler_name", "scheduler"):
+            if key in tmpl and key in inp:
+                inp[key] = tmpl[key]
+
+    # Apply resolution
+    if "width" in tmpl or "height" in tmpl:
+        for nd in prompt.values():
+            if nd.get("class_type") == "EmptyLatentImage":
+                inp = nd.get("inputs", {})
+                if "width" in tmpl:
+                    inp["width"] = tmpl["width"]
+                if "height" in tmpl:
+                    inp["height"] = tmpl["height"]
