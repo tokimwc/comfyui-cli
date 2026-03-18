@@ -41,48 +41,44 @@ def run_workflow(
     # Load workflow
     workflow = load_workflow(path)
 
-    # Detect format: GUI format has "nodes" key, API format has node IDs as keys
-    is_gui_format = "nodes" in workflow and "links" in workflow
-
-    if is_gui_format:
-        console.print("[dim]Detected GUI format, converting to API format...[/dim]")
-        api_prompt = gui_to_api(workflow)
-
-        # Enhance with object_info from server
-        config = Config.load()
-        with ComfyUIClient(config) as client:
-            if not client.is_alive():
-                console.print(f"[red]ComfyUI is not running at {config.base_url}[/red]")
-                raise typer.Exit(1)
-            try:
-                obj_info = client.object_info()
-                api_prompt = enhance_with_object_info(api_prompt, obj_info)
-            except Exception as e:
-                console.print(f"[yellow]Warning: Could not enhance with object_info: {e}[/yellow]")
-    else:
-        # Already API format
-        api_prompt = workflow
-
-    # Apply overrides
-    if seed is not None:
-        _override_seed(api_prompt, seed)
-    if prompt_text is not None:
-        _override_prompt(api_prompt, prompt_text, positive=True)
-    if negative is not None:
-        _override_prompt(api_prompt, negative, positive=False)
-
-    if dry_run:
-        console.print("[bold]API Prompt (dry run):[/bold]")
-        console.print_json(data=api_prompt)
-        return
-
-    # Execute
+    # Single client for entire operation
     config = Config.load()
     with ComfyUIClient(config) as client:
         if not client.is_alive():
             console.print(f"[red]ComfyUI is not running at {config.base_url}[/red]")
             raise typer.Exit(1)
 
+        # Detect format: GUI format has "nodes" key, API format has node IDs as keys
+        is_gui_format = "nodes" in workflow and "links" in workflow
+
+        if is_gui_format:
+            console.print("[dim]Detected GUI format, converting to API format...[/dim]")
+            api_prompt = gui_to_api(workflow)
+
+            # Enhance with object_info from server
+            try:
+                obj_info = client.object_info()
+                api_prompt = enhance_with_object_info(api_prompt, obj_info)
+            except Exception as e:
+                console.print(f"[yellow]Warning: Could not enhance with object_info: {e}[/yellow]")
+        else:
+            # Already API format
+            api_prompt = workflow
+
+        # Apply overrides
+        if seed is not None:
+            _override_seed(api_prompt, seed)
+        if prompt_text is not None:
+            _override_prompt(api_prompt, prompt_text, positive=True)
+        if negative is not None:
+            _override_prompt(api_prompt, negative, positive=False)
+
+        if dry_run:
+            console.print("[bold]API Prompt (dry run):[/bold]")
+            console.print_json(data=api_prompt)
+            return
+
+        # Execute
         for i in range(batch):
             if batch > 1:
                 console.print(f"\n[bold cyan]── Batch {i + 1}/{batch} ──[/bold cyan]")
