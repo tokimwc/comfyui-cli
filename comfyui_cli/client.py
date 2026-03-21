@@ -18,7 +18,15 @@ class ComfyUIClient:
     def __init__(self, config: Config | None = None) -> None:
         self.config = config or Config.load()
         self.client_id = str(uuid.uuid4())
-        self._http = httpx.Client(base_url=self.config.base_url, timeout=30.0)
+        self._http = httpx.Client(
+            base_url=self.config.base_url,
+            timeout=30.0,
+            limits=httpx.Limits(
+                max_connections=10,
+                max_keepalive_connections=5,
+                keepalive_expiry=30,
+            ),
+        )
 
     def close(self) -> None:
         self._http.close()

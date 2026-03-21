@@ -5,7 +5,6 @@ from __future__ import annotations
 import subprocess
 
 import typer
-from rich.bar import Bar
 from rich.console import Console
 from rich.table import Table
 from rich.text import Text
@@ -216,7 +215,12 @@ def watch(
 
     config = _get_config()
 
+    # Reuse a single client across all iterations to avoid socket exhaustion
+    # (WinError 10055) caused by rapid client creation in a tight loop.
+    client: ComfyUIClient | None = None
     try:
+        client = ComfyUIClient(config)
+
         while True:
             console.clear()
             smi = _query_nvidia_smi()
@@ -252,17 +256,16 @@ def watch(
                     )
                 )
 
-            # ComfyUI queue
+            # ComfyUI queue (reuse existing client)
             try:
-                with ComfyUIClient(config) as client:
-                    if client.is_alive():
-                        q = client.get_queue()
-                        running = len(q.get("queue_running", []))
-                        pending = len(q.get("queue_pending", []))
-                        if running or pending:
-                            console.print(
-                                f"\n[bold]Queue:[/bold] [green]{running} running[/green], {pending} pending"
-                            )
+                if client.is_alive():
+                    q = client.get_queue()
+                    running = len(q.get("queue_running", []))
+                    pending = len(q.get("queue_pending", []))
+                    if running or pending:
+                        console.print(
+                            f"\n[bold]Queue:[/bold] [green]{running} running[/green], {pending} pending"
+                        )
             except Exception:
                 pass
 
@@ -270,6 +273,9 @@ def watch(
             time.sleep(interval)
     except KeyboardInterrupt:
         console.print("\n[dim]Stopped.[/dim]")
+    finally:
+        if client is not None:
+            client.close()
 
 
 @app.command()
